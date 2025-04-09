@@ -28,19 +28,25 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy package files and TypeScript config
-COPY package.json pnpm-lock.yaml tsconfig.json ./
+# Copy all files first
+COPY . .
+
+# Debug: List contents of directories
+RUN echo "Contents of /app:" && \
+    ls -la /app && \
+    echo "\nContents of /app/src:" && \
+    ls -la /app/src && \
+    echo "\nContents of /app/src/api:" && \
+    ls -la /app/src/api && \
+    echo "\nContents of /app/src/scraper:" && \
+    ls -la /app/src/scraper && \
+    echo "\nContents of /app/src/config:" && \
+    ls -la /app/src/config && \
+    echo "\nContents of /app/src/llm:" && \
+    ls -la /app/src/llm
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
-
-# Copy source files
-COPY src/ ./src/
-
-# Debug: List contents of /app directory
-RUN ls -la /app && \
-    echo "Contents of /app/src:" && \
-    ls -la /app/src
 
 # Build the application
 RUN pnpm run build
