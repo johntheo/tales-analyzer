@@ -35,7 +35,12 @@ COPY package.json pnpm-lock.yaml tsconfig.json ./
 RUN pnpm install --frozen-lockfile
 
 # Copy source files
-COPY src ./src
+COPY src/ ./src/
+
+# Debug: List contents of /app directory
+RUN ls -la /app && \
+    echo "Contents of /app/src:" && \
+    ls -la /app/src
 
 # Build the application
 RUN pnpm run build

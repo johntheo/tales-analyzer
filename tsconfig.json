@@ -11,9 +11,11 @@
     "allowJs": true,
     "resolveJsonModule": true,
     "lib": ["ES2021", "DOM", "DOM.Iterable"],
-    "types": ["node"]
+    "types": ["node"],
+    "rootDir": "."
   },
-  "include": ["src"],
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"],
   "ts-node": {
     "esm": true,
     "experimentalSpecifierResolution": "node"
