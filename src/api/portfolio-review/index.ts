@@ -62,6 +62,29 @@ app.use((req: Request, res: Response, next: Function) => {
   next();
 });
 
+// Root endpoint
+app.get('/', (req: Request, res: Response) => {
+  res.json({
+    status: 'ok',
+    message: 'Tales Analyzer API is running',
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      portfolioReview: '/portfolio-review'
+    }
+  });
+});
+
+// Health check endpoint
+app.get('/health', (req: Request, res: Response) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV
+  });
+});
+
 // Middleware para validar URL
 const validateUrl = (req: Request, res: Response, next: Function) => {
   const { url } = req.body;
@@ -132,12 +155,6 @@ app.post('/portfolio-review', validateUrl, async (req: Request, res: Response) =
       error: errorMessage 
     });
   }
-});
-
-// Health check endpoint
-app.get('/health', (req: Request, res: Response) => {
-  log.info('Health check requested');
-  res.status(200).json({ status: 'ok' });
 });
 
 const PORT = process.env.PORT || config.port;
