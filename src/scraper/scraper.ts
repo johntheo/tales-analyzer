@@ -3,6 +3,7 @@ import puppeteer from 'puppeteer';
 export async function scrapePortfolio(url: string): Promise<{ textContent: string, images: string[], structuredContent: any }> {
   let browser;
   try {
+    // Configuração para garantir que o Puppeteer baixe e use seu próprio Chromium
     browser = await puppeteer.launch({ 
       headless: true,
       args: [
@@ -15,8 +16,7 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
         '--no-zygote',
         '--single-process',
         '--disable-extensions'
-      ],
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
+      ]
     });
     const page = await browser.newPage();
     
