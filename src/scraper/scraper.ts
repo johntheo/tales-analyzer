@@ -10,8 +10,13 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-accelerated-2d-canvas',
-        '--disable-gpu'
-      ]
+        '--disable-gpu',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-extensions'
+      ],
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
     });
     const page = await browser.newPage();
     
