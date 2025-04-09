@@ -106,7 +106,7 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
 
     // Extract raw text content
     const textContent = await page.evaluate(() => {
-      const elements = Array.from(document.querySelectorAll('body *'));
+      const elements = Array.from(document.querySelectorAll('body *')) as Element[];
       return elements
         .map(el => el.textContent?.trim())
         .filter(Boolean)
@@ -133,7 +133,7 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
     // Extract structured content
     const structuredContent = await page.evaluate(() => {
       // Try to identify main sections
-      const sections = Array.from(document.querySelectorAll('section, article, .section, .project, .case-study, .portfolio-item'));
+      const sections = Array.from(document.querySelectorAll('section, article, .section, .project, .case-study, .portfolio-item')) as Element[];
       
       return {
         title: document.title,

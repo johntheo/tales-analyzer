@@ -4,9 +4,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/api/portfolio-review/index.ts",
-    "build": "tsc",
+    "build": "tsc --project tsconfig.json",
     "start": "node dist/api/portfolio-review/index.js",
-    "postinstall": "npm run build"
+    "postinstall": "pnpm run build"
   },
   "dependencies": {
     "cors": "^2.8.5",
