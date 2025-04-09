@@ -1,23 +1,40 @@
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
+import chromium from 'chrome-aws-lambda';
 
 export async function scrapePortfolio(url: string): Promise<{ textContent: string, images: string[], structuredContent: any }> {
   let browser;
   try {
-    // Configuração para garantir que o Puppeteer baixe e use seu próprio Chromium
-    browser = await puppeteer.launch({ 
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--disable-gpu',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-extensions'
-      ]
-    });
+    // Configuração para usar chrome-aws-lambda em produção e puppeteer normal em desenvolvimento
+    const isDev = process.env.NODE_ENV === 'development';
+    
+    if (isDev) {
+      // Em desenvolvimento, use o puppeteer normal
+      const puppeteerDev = await import('puppeteer');
+      browser = await puppeteerDev.default.launch({ 
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--disable-gpu',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process',
+          '--disable-extensions'
+        ]
+      });
+    } else {
+      // Em produção, use chrome-aws-lambda
+      browser = await puppeteer.launch({
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath,
+        headless: chromium.headless,
+        ignoreHTTPSErrors: true
+      });
+    }
+    
     const page = await browser.newPage();
     
     // Set a reasonable timeout
