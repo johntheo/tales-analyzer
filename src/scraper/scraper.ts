@@ -43,7 +43,7 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
     }
     
     console.log('Browser launched successfully');
-    const page = await browser.newPage();
+    let page = await browser.newPage();
     console.log('New page created');
     
     // Set a reasonable timeout
@@ -64,7 +64,7 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
 
     // Navigate with retry logic
     let retries = 5;
-    let lastError;
+    let lastError: Error | undefined;
     
     while (retries > 0) {
       try {
@@ -75,13 +75,13 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
         });
         console.log('Navigation successful');
         break;
-      } catch (error) {
-        lastError = error;
+      } catch (error: unknown) {
+        lastError = error instanceof Error ? error : new Error(String(error));
         retries--;
-        console.log(`Navigation failed: ${error.message}`);
+        console.log(`Navigation failed: ${lastError.message}`);
         if (retries === 0) {
           console.log('All navigation attempts failed');
-          throw error;
+          throw lastError;
         }
         console.log(`Waiting 10 seconds before retry... (${retries} attempts left)`);
         await new Promise(resolve => setTimeout(resolve, 10000));
@@ -96,9 +96,10 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
             await page.setDefaultNavigationTimeout(120000);
             await page.setDefaultTimeout(120000);
           }
-        } catch (error) {
-          console.log('Error checking page status:', error.message);
-          throw error;
+        } catch (error: unknown) {
+          const pageError = error instanceof Error ? error : new Error(String(error));
+          console.log('Error checking page status:', pageError.message);
+          throw pageError;
         }
       }
     }
