@@ -4,7 +4,7 @@ import chromium from 'chrome-aws-lambda';
 export async function scrapePortfolio(url: string): Promise<{ textContent: string, images: string[], structuredContent: any }> {
   let browser;
   try {
-    // Configuração para usar chrome-aws-lambda em produção e puppeteer normal em desenvolvimento
+    console.log('Starting browser initialization...');
     const isDev = process.env.NODE_ENV === 'development';
     
     const browserOptions = {
@@ -18,14 +18,22 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
         '--no-first-run',
         '--no-zygote',
         '--single-process',
-        '--disable-extensions'
+        '--disable-extensions',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--window-size=1920,1080'
       ],
-      defaultViewport: chromium.defaultViewport,
+      defaultViewport: {
+        width: 1920,
+        height: 1080
+      },
       executablePath: isDev ? undefined : await chromium.executablePath,
       headless: true,
       ignoreHTTPSErrors: true,
-      timeout: 30000
+      timeout: 90000
     };
+
+    console.log('Launching browser with options:', JSON.stringify(browserOptions, null, 2));
 
     if (isDev) {
       const puppeteerDev = await import('puppeteer');
@@ -34,11 +42,14 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
       browser = await puppeteer.launch(browserOptions);
     }
     
+    console.log('Browser launched successfully');
     const page = await browser.newPage();
+    console.log('New page created');
     
     // Set a reasonable timeout
-    await page.setDefaultNavigationTimeout(60000);
-    await page.setDefaultTimeout(60000);
+    await page.setDefaultNavigationTimeout(120000);
+    await page.setDefaultTimeout(120000);
+    console.log('Timeouts set');
     
     // Enable request interception to block unnecessary resources
     await page.setRequestInterception(true);
@@ -52,21 +63,47 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
     });
 
     // Navigate with retry logic
-    let retries = 3;
+    let retries = 5;
+    let lastError;
+    
     while (retries > 0) {
       try {
+        console.log(`Attempting to navigate to ${url} (${retries} attempts left)`);
         await page.goto(url, { 
-          waitUntil: 'networkidle0',
-          timeout: 60000 
+          waitUntil: ['networkidle0', 'domcontentloaded'],
+          timeout: 120000 
         });
+        console.log('Navigation successful');
         break;
       } catch (error) {
+        lastError = error;
         retries--;
-        if (retries === 0) throw error;
-        console.log(`Navigation failed, retrying... (${retries} attempts left)`);
-        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds before retry
+        console.log(`Navigation failed: ${error.message}`);
+        if (retries === 0) {
+          console.log('All navigation attempts failed');
+          throw error;
+        }
+        console.log(`Waiting 10 seconds before retry... (${retries} attempts left)`);
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        
+        // Try to recover the page if it was closed
+        try {
+          if (!page.isClosed()) {
+            console.log('Page is still open, continuing...');
+          } else {
+            console.log('Page was closed, creating new page...');
+            page = await browser.newPage();
+            await page.setDefaultNavigationTimeout(120000);
+            await page.setDefaultTimeout(120000);
+          }
+        } catch (error) {
+          console.log('Error checking page status:', error.message);
+          throw error;
+        }
       }
     }
+
+    console.log('Starting content extraction...');
 
     // Extract raw text content
     const textContent = await page.evaluate(() => {
@@ -76,6 +113,8 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
         .filter(Boolean)
         .join('\n');
     });
+
+    console.log('Text content extracted');
 
     // Extract images with more context
     const images = await page.evaluate(() => {
@@ -89,6 +128,8 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
         }))
         .filter(img => img.src && img.src.startsWith('http'));
     });
+
+    console.log('Images extracted');
 
     // Extract structured content
     const structuredContent = await page.evaluate(() => {
@@ -114,6 +155,8 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
       };
     });
 
+    console.log('Structured content extracted');
+
     return { 
       textContent, 
       images: images.map((img: any) => img.src),
@@ -125,7 +168,9 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
   } finally {
     if (browser) {
       try {
+        console.log('Closing browser...');
         await browser.close();
+        console.log('Browser closed successfully');
       } catch (error) {
         console.error('Error closing browser:', error);
       }
