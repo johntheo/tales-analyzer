@@ -1,5 +1,4 @@
 import puppeteer from 'puppeteer-core';
-import chromium from 'chrome-aws-lambda';
 
 export async function scrapePortfolio(url: string): Promise<{ textContent: string, images: string[], structuredContent: any }> {
   let browser;
@@ -9,7 +8,6 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
     
     const browserOptions = {
       args: [
-        ...chromium.args,
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
@@ -27,7 +25,7 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
         width: 1920,
         height: 1080
       },
-      executablePath: isDev ? undefined : await chromium.executablePath,
+      executablePath: isDev ? undefined : process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
       headless: true,
       ignoreHTTPSErrors: true,
       timeout: 90000
