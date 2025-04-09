@@ -7,38 +7,38 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
     // Configuração para usar chrome-aws-lambda em produção e puppeteer normal em desenvolvimento
     const isDev = process.env.NODE_ENV === 'development';
     
+    const browserOptions = {
+      args: [
+        ...chromium.args,
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-extensions'
+      ],
+      defaultViewport: chromium.defaultViewport,
+      executablePath: isDev ? undefined : await chromium.executablePath,
+      headless: true,
+      ignoreHTTPSErrors: true,
+      timeout: 30000
+    };
+
     if (isDev) {
-      // Em desenvolvimento, use o puppeteer normal
       const puppeteerDev = await import('puppeteer');
-      browser = await puppeteerDev.default.launch({ 
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--disable-gpu',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          '--disable-extensions'
-        ]
-      });
+      browser = await puppeteerDev.default.launch(browserOptions);
     } else {
-      // Em produção, use chrome-aws-lambda
-      browser = await puppeteer.launch({
-        args: chromium.args,
-        defaultViewport: chromium.defaultViewport,
-        executablePath: await chromium.executablePath,
-        headless: chromium.headless,
-        ignoreHTTPSErrors: true
-      });
+      browser = await puppeteer.launch(browserOptions);
     }
     
     const page = await browser.newPage();
     
     // Set a reasonable timeout
-    await page.setDefaultNavigationTimeout(30000);
+    await page.setDefaultNavigationTimeout(60000);
+    await page.setDefaultTimeout(60000);
     
     // Enable request interception to block unnecessary resources
     await page.setRequestInterception(true);
@@ -51,7 +51,22 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
       }
     });
 
-    await page.goto(url, { waitUntil: 'networkidle0' });
+    // Navigate with retry logic
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        await page.goto(url, { 
+          waitUntil: 'networkidle0',
+          timeout: 60000 
+        });
+        break;
+      } catch (error) {
+        retries--;
+        if (retries === 0) throw error;
+        console.log(`Navigation failed, retrying... (${retries} attempts left)`);
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds before retry
+      }
+    }
 
     // Extract raw text content
     const textContent = await page.evaluate(() => {
@@ -109,7 +124,11 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
     throw new Error(`Failed to scrape portfolio: ${error instanceof Error ? error.message : 'Unknown error'}`);
   } finally {
     if (browser) {
-      await browser.close();
+      try {
+        await browser.close();
+      } catch (error) {
+        console.error('Error closing browser:', error);
+      }
     }
   }
 }
