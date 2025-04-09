@@ -42,7 +42,7 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
     
     // Enable request interception to block unnecessary resources
     await page.setRequestInterception(true);
-    page.on('request', (request) => {
+    page.on('request', (request: any) => {
       const resourceType = request.resourceType();
       if (resourceType === 'image' || resourceType === 'stylesheet' || resourceType === 'font') {
         request.abort();
@@ -101,7 +101,7 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
 
     return { 
       textContent, 
-      images: images.map(img => img.src),
+      images: images.map((img: any) => img.src),
       structuredContent 
     };
   } catch (error: unknown) {

@@ -1,1 +1,1 @@
-web: NODE_ENV=production pnpm install && pnpm run build && pnpm start 
+web: NODE_ENV=production pnpm install --no-frozen-lockfile && pnpm run build && pnpm start 
