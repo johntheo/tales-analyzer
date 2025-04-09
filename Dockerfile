@@ -28,14 +28,14 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy package files
+# Copy package files and TypeScript config
 COPY package.json pnpm-lock.yaml tsconfig.json ./
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 
-# Copy the rest of the application
-COPY . .
+# Copy source files
+COPY src ./src
 
 # Build the application
 RUN pnpm run build
