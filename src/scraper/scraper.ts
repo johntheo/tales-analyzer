@@ -156,7 +156,7 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
       };
     });
 
-    console.log('Structured content extracted');
+    console.log('Structured content extracted', structuredContent);
 
     return { 
       textContent, 

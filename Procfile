@@ -1,1 +1,0 @@
-web: NODE_ENV=production pnpm install --no-frozen-lockfile && pnpm run build && pnpm start 
