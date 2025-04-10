@@ -60,38 +60,76 @@ async function captureScreenshot(page: any, url: string, outputDir: string): Pro
   const filename = `${screenshotId}.png`;
   const filepath = path.join(outputDir, filename);
   
-  await page.screenshot({ 
-    path: filepath, 
-    fullPage: true 
-  });
-  
-  logger.debug('Screenshot saved', { filepath });
-  return filepath;
+  try {
+    logger.debug('Taking screenshot', { url, filepath });
+    
+    // Check if output directory exists, create if not
+    if (!fs.existsSync(outputDir)) {
+      logger.debug('Creating output directory', { outputDir });
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+    
+    await page.screenshot({ 
+      path: filepath, 
+      fullPage: true 
+    });
+    
+    logger.debug('Screenshot saved', { filepath });
+    return filepath;
+  } catch (error) {
+    logger.error('Error capturing screenshot', { 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      url,
+      filepath
+    });
+    throw error; // Re-throw to be handled by the caller
+  }
 }
 
 // Função para extrair links internos
 async function extractInternalLinks(page: any, baseUrl: string): Promise<string[]> {
-  return await page.evaluate((baseUrl: string) => {
-    const links = Array.from(document.querySelectorAll('a[href]'));
-    const internalLinks = new Set<string>();
+  try {
+    logger.debug('Extracting internal links from page', { baseUrl });
     
-    for (const link of links) {
-      const href = link.getAttribute('href');
-      if (!href) continue;
-      
+    const links = await page.evaluate((baseUrl: string) => {
       try {
-        const url = new URL(href, baseUrl);
-        // Verifica se é um link interno (mesmo domínio)
-        if (url.hostname === new URL(baseUrl).hostname) {
-          internalLinks.add(url.href);
+        const links = Array.from(document.querySelectorAll('a[href]'));
+        const internalLinks = new Set<string>();
+        
+        for (const link of links) {
+          const href = link.getAttribute('href');
+          if (!href) continue;
+          
+          try {
+            const url = new URL(href, baseUrl);
+            // Verifica se é um link interno (mesmo domínio)
+            if (url.hostname === new URL(baseUrl).hostname) {
+              internalLinks.add(url.href);
+            }
+          } catch (e) {
+            // Ignora URLs inválidas
+            console.error('Invalid URL:', href, e);
+          }
         }
+        
+        return Array.from(internalLinks);
       } catch (e) {
-        // Ignora URLs inválidas
+        console.error('Error in page.evaluate:', e);
+        return [];
       }
-    }
+    }, baseUrl);
     
-    return Array.from(internalLinks);
-  }, baseUrl);
+    logger.debug('Internal links extracted', { count: links.length, baseUrl });
+    return links;
+  } catch (error) {
+    logger.error('Error extracting internal links', { 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      baseUrl
+    });
+    return []; // Return empty array on error to allow continuation
+  }
 }
 
 // Função para visitar URLs recursivamente
@@ -111,12 +149,16 @@ async function visitUrlsRecursively(
     if (visited.has(url)) continue;
     visited.add(url);
     
+    let page;
     try {
       logger.debug('Visiting URL', { url, depth });
       
-      const page = await browser.newPage();
+      page = await browser.newPage();
+      logger.debug('New page created', { url });
+      
       await page.setDefaultNavigationTimeout(120000);
       await page.setDefaultTimeout(120000);
+      logger.debug('Page timeouts set', { url });
       
       // Configurar interceptação de requisições
       await page.setRequestInterception(true);
@@ -128,35 +170,82 @@ async function visitUrlsRecursively(
           request.continue();
         }
       });
+      logger.debug('Request interception configured', { url });
       
       // Navegar para a URL
+      logger.debug('Navigating to URL', { url });
       await page.goto(url, { 
         waitUntil: ['networkidle0', 'domcontentloaded'],
         timeout: 120000 
       });
+      logger.debug('Navigation completed', { url });
       
       // Capturar screenshot
-      const screenshotPath = await captureScreenshot(page, url, outputDir);
-      screenshots.push(screenshotPath);
+      try {
+        logger.debug('Capturing screenshot', { url });
+        const screenshotPath = await captureScreenshot(page, url, outputDir);
+        screenshots.push(screenshotPath);
+        logger.debug('Screenshot captured successfully', { url, screenshotPath });
+      } catch (screenshotError) {
+        logger.error('Error capturing screenshot', { 
+          error: screenshotError instanceof Error ? screenshotError.message : String(screenshotError),
+          stack: screenshotError instanceof Error ? screenshotError.stack : undefined,
+          url 
+        });
+        // Continue execution even if screenshot fails
+      }
       
       // Extrair links internos para a próxima profundidade
       if (depth < maxDepth) {
-        const internalLinks = await extractInternalLinks(page, baseUrl);
-        await visitUrlsRecursively(
-          browser, 
-          internalLinks, 
-          visited, 
-          depth + 1, 
-          maxDepth, 
-          baseUrl,
-          outputDir,
-          screenshots
-        );
+        try {
+          logger.debug('Extracting internal links', { url, depth });
+          const internalLinks = await extractInternalLinks(page, baseUrl);
+          logger.debug('Internal links extracted', { url, count: internalLinks.length });
+          
+          await visitUrlsRecursively(
+            browser, 
+            internalLinks, 
+            visited, 
+            depth + 1, 
+            maxDepth, 
+            baseUrl,
+            outputDir,
+            screenshots
+          );
+        } catch (linksError) {
+          logger.error('Error extracting or processing internal links', { 
+            error: linksError instanceof Error ? linksError.message : String(linksError),
+            stack: linksError instanceof Error ? linksError.stack : undefined,
+            url 
+          });
+          // Continue execution even if link extraction fails
+        }
       }
       
-      await page.close();
+      if (page && !page.isClosed()) {
+        await page.close();
+        logger.debug('Page closed', { url });
+      }
     } catch (error) {
-      logger.error('Error visiting URL', { error, url });
+      logger.error('Error visiting URL', { 
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        url,
+        depth
+      });
+      
+      // Try to close the page if it exists and is not already closed
+      if (page && !page.isClosed()) {
+        try {
+          await page.close();
+          logger.debug('Page closed after error', { url });
+        } catch (closeError) {
+          logger.error('Error closing page after error', { 
+            error: closeError instanceof Error ? closeError.message : String(closeError),
+            url 
+          });
+        }
+      }
     }
   }
 }
@@ -217,7 +306,12 @@ DON'T include any additional text before or after the JSON.
 `;
 
   try {
-    logger.debug('Making OpenAI API call');
+    logger.debug('Making OpenAI API call', { 
+      textContentLength: textContent.length,
+      imagesCount: images.length,
+      screenshotsCount: screenshots.length
+    });
+    
     const response = await openai.chat.completions.create({
       model: 'gpt-4',
       messages: [{ role: 'user', content: prompt }],
@@ -230,6 +324,7 @@ DON'T include any additional text before or after the JSON.
       throw new Error('No response content from OpenAI');
     }
 
+    logger.debug('Extracting JSON from OpenAI response', { contentLength: content.length });
     const extraction = extractJSON(content) as SkillsExtraction;
     
     // Validate the response structure
@@ -237,9 +332,17 @@ DON'T include any additional text before or after the JSON.
       throw new Error('Invalid response structure from OpenAI');
     }
 
+    logger.debug('JSON extraction successful', { 
+      projectsCount: extraction.projects.length,
+      skillsCount: extraction.skills.length
+    });
+
     return extraction;
   } catch (error) {
-    logger.error('Extraction error', { error });
+    logger.error('Extraction error', { 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
     throw new Error(`Failed to extract projects and skills: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -284,13 +387,30 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
       timeout: 90000
     };
 
-    logger.debug('Launching browser', { options: browserOptions });
+    logger.debug('Launching browser', { 
+      options: {
+        ...browserOptions,
+        executablePath: browserOptions.executablePath ? 'Path set' : 'Path not set'
+      },
+      isDev,
+      puppeteerExecutablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 'Not set'
+    });
 
-    if (isDev) {
-      const puppeteerDev = await import('puppeteer');
-      browser = await puppeteerDev.default.launch(browserOptions);
-    } else {
-      browser = await puppeteer.launch(browserOptions);
+    try {
+      if (isDev) {
+        const puppeteerDev = await import('puppeteer');
+        browser = await puppeteerDev.default.launch(browserOptions);
+      } else {
+        browser = await puppeteer.launch(browserOptions);
+      }
+    } catch (browserError) {
+      logger.error('Failed to launch browser', { 
+        error: browserError instanceof Error ? browserError.message : String(browserError),
+        stack: browserError instanceof Error ? browserError.stack : undefined,
+        isDev,
+        puppeteerExecutablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 'Not set'
+      });
+      throw browserError;
     }
     
     logger.debug('Browser launched successfully');
@@ -327,9 +447,16 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
       } catch (error: unknown) {
         lastError = error instanceof Error ? error : new Error(String(error));
         retries--;
-        logger.warn('Navigation failed', { error: lastError, retries });
+        logger.warn('Navigation failed', { 
+          error: lastError.message,
+          stack: lastError.stack,
+          retries 
+        });
         if (retries === 0) {
-          logger.error('All navigation attempts failed', { error: lastError });
+          logger.error('All navigation attempts failed', { 
+            error: lastError.message,
+            stack: lastError.stack
+          });
           throw lastError;
         }
         logger.debug('Waiting before retry', { retries });
@@ -347,90 +474,170 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
           }
         } catch (error: unknown) {
           const pageError = error instanceof Error ? error : new Error(String(error));
-          logger.error('Error checking page status', { error: pageError });
+          logger.error('Error checking page status', { 
+            error: pageError.message,
+            stack: pageError.stack
+          });
           throw pageError;
         }
       }
     }
 
     // Capturar screenshot da página inicial
-    const initialScreenshotPath = await captureScreenshot(page, url, outputDir);
-    screenshots.push(initialScreenshotPath);
-    visitedUrls.add(url);
+    try {
+      logger.debug('Capturing initial screenshot');
+      const initialScreenshotPath = await captureScreenshot(page, url, outputDir);
+      screenshots.push(initialScreenshotPath);
+      visitedUrls.add(url);
+      logger.debug('Initial screenshot captured', { path: initialScreenshotPath });
+    } catch (screenshotError) {
+      logger.error('Error capturing initial screenshot', { 
+        error: screenshotError instanceof Error ? screenshotError.message : String(screenshotError),
+        stack: screenshotError instanceof Error ? screenshotError.stack : undefined
+      });
+      // Continue execution even if screenshot fails
+    }
 
     logger.debug('Starting content extraction');
 
     // Extract raw text content
-    const textContent = await page.evaluate(() => {
-      const elements = Array.from(document.querySelectorAll('body *')) as Element[];
-      return elements
-        .map(el => el.textContent?.trim())
-        .filter(Boolean)
-        .join('\n');
-    });
-
-    logger.debug('Text content extracted');
+    let textContent = '';
+    try {
+      textContent = await page.evaluate(() => {
+        const elements = Array.from(document.querySelectorAll('body *')) as Element[];
+        return elements
+          .map(el => el.textContent?.trim())
+          .filter(Boolean)
+          .join('\n');
+      });
+      logger.debug('Text content extracted', { length: textContent.length });
+    } catch (textError) {
+      logger.error('Error extracting text content', { 
+        error: textError instanceof Error ? textError.message : String(textError),
+        stack: textError instanceof Error ? textError.stack : undefined
+      });
+      // Continue with empty text content
+    }
 
     // Extract images with more context
-    const images = await page.evaluate(() => {
-      return Array.from(document.images)
-        .map(img => ({
-          src: img.src,
-          alt: img.alt || '',
-          width: img.width,
-          height: img.height,
-          context: img.closest('section, article, div')?.textContent?.trim() || ''
-        }))
-        .filter(img => img.src && img.src.startsWith('http'));
-    });
-
-    logger.debug('Images extracted', { count: images.length });
+    let images: any[] = [];
+    try {
+      images = await page.evaluate(() => {
+        return Array.from(document.images)
+          .map(img => ({
+            src: img.src,
+            alt: img.alt || '',
+            width: img.width,
+            height: img.height,
+            context: img.closest('section, article, div')?.textContent?.trim() || ''
+          }))
+          .filter(img => img.src && img.src.startsWith('http'));
+      });
+      logger.debug('Images extracted', { count: images.length });
+    } catch (imagesError) {
+      logger.error('Error extracting images', { 
+        error: imagesError instanceof Error ? imagesError.message : String(imagesError),
+        stack: imagesError instanceof Error ? imagesError.stack : undefined
+      });
+      // Continue with empty images array
+    }
 
     // Extract structured content
-    const structuredContent = await page.evaluate(() => {
-      // Try to identify main sections
-      const sections = Array.from(document.querySelectorAll('section, article, .section, .project, .case-study, .portfolio-item')) as Element[];
-      
-      return {
-        title: document.title,
-        metaDescription: document.querySelector('meta[name="description"]')?.getAttribute('content') || '',
-        sections: sections.map(section => ({
-          title: section.querySelector('h1, h2, h3, h4, h5, h6')?.textContent?.trim() || '',
-          content: section.textContent?.trim() || '',
-          type: section.className || section.tagName.toLowerCase()
-        }))
+    let structuredContent: StructuredContent;
+    try {
+      structuredContent = await page.evaluate(() => {
+        // Try to identify main sections
+        const sections = Array.from(document.querySelectorAll('section, article, .section, .project, .case-study, .portfolio-item')) as Element[];
+        
+        return {
+          title: document.title,
+          metaDescription: document.querySelector('meta[name="description"]')?.getAttribute('content') || '',
+          sections: sections.map(section => ({
+            title: section.querySelector('h1, h2, h3, h4, h5, h6')?.textContent?.trim() || '',
+            content: section.textContent?.trim() || '',
+            type: section.className || section.tagName.toLowerCase()
+          }))
+        };
+      }) as StructuredContent;
+      logger.debug('Structured content extracted', { 
+        title: structuredContent.title,
+        sectionsCount: structuredContent.sections.length
+      });
+    } catch (structuredError) {
+      logger.error('Error extracting structured content', { 
+        error: structuredError instanceof Error ? structuredError.message : String(structuredError),
+        stack: structuredError instanceof Error ? structuredError.stack : undefined
+      });
+      // Create a minimal structured content object
+      structuredContent = {
+        title: '',
+        metaDescription: '',
+        sections: [],
+        projects: [],
+        skills: [],
+        screenshots: [],
+        visitedUrls: []
       };
-    }) as StructuredContent;
+    }
 
     // Extrair links internos para navegação recursiva
-    logger.debug('Extracting internal links');
-    const internalLinks = await extractInternalLinks(page, url);
-    logger.debug('Internal links extracted', { count: internalLinks.length });
+    let internalLinks: string[] = [];
+    try {
+      logger.debug('Extracting internal links');
+      internalLinks = await extractInternalLinks(page, url);
+      logger.debug('Internal links extracted', { count: internalLinks.length });
+    } catch (linksError) {
+      logger.error('Error extracting internal links', { 
+        error: linksError instanceof Error ? linksError.message : String(linksError),
+        stack: linksError instanceof Error ? linksError.stack : undefined
+      });
+      // Continue with empty links array
+    }
     
     // Navegar recursivamente pelos links internos
-    logger.debug('Starting recursive navigation');
-    await visitUrlsRecursively(
-      browser, 
-      internalLinks, 
-      visitedUrls, 
-      1, // Profundidade inicial
-      2, // Profundidade máxima
-      url,
-      outputDir,
-      screenshots
-    );
-    logger.debug('Recursive navigation completed', { 
-      visitedUrls: visitedUrls.size, 
-      screenshots: screenshots.length 
-    });
+    try {
+      logger.debug('Starting recursive navigation');
+      await visitUrlsRecursively(
+        browser, 
+        internalLinks, 
+        visitedUrls, 
+        1, // Profundidade inicial
+        2, // Profundidade máxima
+        url,
+        outputDir,
+        screenshots
+      );
+      logger.debug('Recursive navigation completed', { 
+        visitedUrls: visitedUrls.size, 
+        screenshots: screenshots.length 
+      });
+    } catch (recursiveError) {
+      logger.error('Error during recursive navigation', { 
+        error: recursiveError instanceof Error ? recursiveError.message : String(recursiveError),
+        stack: recursiveError instanceof Error ? recursiveError.stack : undefined
+      });
+      // Continue execution even if recursive navigation fails
+    }
 
     // Use LLM to extract projects and skills intelligently
-    logger.debug('Starting intelligent extraction');
-    const { projects, skills } = await extractProjectsAndSkills(textContent, images.map(img => img.src), screenshots);
-    logger.debug('Intelligent extraction completed', { 
-      projectsCount: projects.length, 
-      skillsCount: skills.length 
-    });
+    let projects: Project[] = [];
+    let skills: string[] = [];
+    try {
+      logger.debug('Starting intelligent extraction');
+      const extraction = await extractProjectsAndSkills(textContent, images.map(img => img.src), screenshots);
+      projects = extraction.projects;
+      skills = extraction.skills;
+      logger.debug('Intelligent extraction completed', { 
+        projectsCount: projects.length, 
+        skillsCount: skills.length 
+      });
+    } catch (extractionError) {
+      logger.error('Error during intelligent extraction', { 
+        error: extractionError instanceof Error ? extractionError.message : String(extractionError),
+        stack: extractionError instanceof Error ? extractionError.stack : undefined
+      });
+      // Continue with empty projects and skills arrays
+    }
 
     // Add the extracted projects and skills to the structured content
     structuredContent.projects = projects;
@@ -451,7 +658,10 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
       structuredContent 
     };
   } catch (error: unknown) {
-    logger.error('Scraping error', { error });
+    logger.error('Scraping error', { 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
     throw new Error(`Failed to scrape portfolio: ${error instanceof Error ? error.message : 'Unknown error'}`);
   } finally {
     if (browser) {
@@ -460,7 +670,10 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
         await browser.close();
         logger.debug('Browser closed successfully');
       } catch (error) {
-        logger.error('Error closing browser', { error });
+        logger.error('Error closing browser', { 
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined
+        });
       }
     }
   }
