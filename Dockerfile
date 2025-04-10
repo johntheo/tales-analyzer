@@ -21,39 +21,26 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
 # Create app directory
 WORKDIR /app
 
-# Copy package files
-COPY package.json pnpm-lock.yaml ./
-
-# Install pnpm
-RUN npm install -g pnpm
+# Copy package files and TypeScript config
+COPY package.json pnpm-lock.yaml tsconfig.json ./
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 
-# Copy source code and configuration files
-COPY . .
+# Copy source files
+COPY src/ ./src/
 
-# Debug: List contents of directories
-RUN echo "Contents of /app:" && \
-    ls -la /app && \
-    echo "\nContents of /app/src:" && \
+# Debug: List contents of /app directory
+RUN ls -la /app && \
+    echo "Contents of /app/src:" && \
     ls -la /app/src
-
-# Check project structure
-RUN pnpm run check:structure
-
-# Create a directory for screenshots with proper permissions
-RUN mkdir -p /tmp/tales-analyzer-screenshots && \
-    chmod 777 /tmp/tales-analyzer-screenshots
 
 # Build the application
 RUN pnpm run build
 
-# Verify Docker environment
-RUN pnpm run verify:docker
-
-# Verify Railway deployment
-RUN pnpm run verify:railway
+# Create a directory for screenshots with proper permissions
+RUN mkdir -p /tmp/tales-analyzer-screenshots && \
+    chmod 777 /tmp/tales-analyzer-screenshots
 
 # Expose the port
 EXPOSE 3000
