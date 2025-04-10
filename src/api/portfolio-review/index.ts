@@ -8,6 +8,14 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+// Cache implementation
+interface CacheEntry {
+  data: any;
+  timestamp: number;
+}
+
+const portfolioCache: Record<string, CacheEntry> = {};
+
 // Função para logging estruturado
 const log = {
   info: (message: string, data?: any) => {
@@ -103,10 +111,28 @@ const validateUrl = (req: Request, res: Response, next: Function) => {
 };
 
 app.post('/portfolio-review', validateUrl, async (req: Request, res: Response) => {
-  const { url } = req.body;
+  const { url, useCache = true } = req.body;
   const startTime = Date.now();
 
   try {
+    // Check cache first if useCache is true
+    if (useCache && portfolioCache[url]) {
+      const cachedEntry = portfolioCache[url];
+      const cacheAge = Date.now() - cachedEntry.timestamp;
+      
+      log.info('Using cached portfolio analysis', {
+        url,
+        cacheAge: `${cacheAge}ms`,
+        totalTime: `${Date.now() - startTime}ms`
+      });
+      
+      return res.status(200).json({
+        success: true,
+        data: cachedEntry.data,
+        fromCache: true
+      });
+    }
+
     log.info('Starting portfolio scraping', { url });
     
     // Scrape the portfolio
@@ -137,9 +163,16 @@ app.post('/portfolio-review', validateUrl, async (req: Request, res: Response) =
       totalTime: `${Date.now() - startTime}ms`
     });
     
+    // Store in cache
+    portfolioCache[url] = {
+      data: analysis,
+      timestamp: Date.now()
+    };
+    
     res.status(200).json({
       success: true,
-      data: analysis
+      data: analysis,
+      fromCache: false
     });
   } catch (err) {
     const errorTime = Date.now() - startTime;
