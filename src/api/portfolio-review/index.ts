@@ -1,8 +1,10 @@
 import express, { Request, Response } from 'express';
 import { scrapePortfolio } from '../../scraper/scraper.js';
 import { analyzePortfolio } from '../../llm/analyze.js';
+import { enrichWithReferences } from '../../reference/index.js';
 import { config } from '../../config/env.js';
 import cors from 'cors';
+import os from 'os';
 
 const app = express();
 app.use(express.json());
@@ -15,6 +17,26 @@ interface CacheEntry {
 }
 
 const portfolioCache: Record<string, CacheEntry> = {};
+
+// Utility function to get memory and CPU usage
+function getResourceUsage() {
+  const used = process.memoryUsage();
+  const cpuUsage = process.cpuUsage();
+  
+  return {
+    memory: {
+      rss: `${Math.round(used.rss / 1024 / 1024)}MB`,
+      heapTotal: `${Math.round(used.heapTotal / 1024 / 1024)}MB`,
+      heapUsed: `${Math.round(used.heapUsed / 1024 / 1024)}MB`,
+      external: `${Math.round(used.external / 1024 / 1024)}MB`
+    },
+    cpu: {
+      user: `${Math.round(cpuUsage.user / 1000)}ms`,
+      system: `${Math.round(cpuUsage.system / 1000)}ms`
+    },
+    loadAverage: os.loadavg()
+  };
+}
 
 // Função para logging estruturado
 const log = {
@@ -35,6 +57,16 @@ const log = {
         message: error.message,
         stack: error.stack
       } : error
+    }));
+  },
+  step: (step: string, duration: number, data?: any) => {
+    console.log(JSON.stringify({
+      timestamp: new Date().toISOString(),
+      level: 'STEP',
+      step,
+      duration: `${duration}ms`,
+      resources: getResourceUsage(),
+      ...data
     }));
   }
 };
@@ -111,7 +143,7 @@ const validateUrl = (req: Request, res: Response, next: Function) => {
 };
 
 app.post('/portfolio-review', validateUrl, async (req: Request, res: Response) => {
-  const { url, useCache = true } = req.body;
+  const { url, useCache = true, includeReferences = false } = req.body;
   const startTime = Date.now();
 
   try {
@@ -133,15 +165,15 @@ app.post('/portfolio-review', validateUrl, async (req: Request, res: Response) =
       });
     }
 
-    log.info('Starting portfolio scraping', { url });
+    log.info('Starting portfolio analysis process', { url });
     
-    // Scrape the portfolio
+    // Step 1: Scrape the portfolio
+    const scrapeStartTime = Date.now();
     const { textContent, images, structuredContent } = await scrapePortfolio(url);
-    const scrapeTime = Date.now() - startTime;
+    const scrapeTime = Date.now() - scrapeStartTime;
     
-    log.info('Portfolio scraping completed', {
+    log.step('scrape', scrapeTime, {
       url,
-      scrapeTime: `${scrapeTime}ms`,
       contentLength: textContent?.length || 0,
       imagesCount: images.length
     });
@@ -151,27 +183,52 @@ app.post('/portfolio-review', validateUrl, async (req: Request, res: Response) =
       return res.status(404).json({ error: 'No content found on the provided URL' });
     }
 
-    // Analyze the portfolio
-    log.info('Starting portfolio analysis');
+    // Step 2: Analyze the portfolio
     const analysisStartTime = Date.now();
     const analysis = await analyzePortfolio({ textContent, images, structuredContent });
     const analysisTime = Date.now() - analysisStartTime;
     
-    log.info('Portfolio analysis completed', {
+    log.step('analyze', analysisTime, {
       url,
-      analysisTime: `${analysisTime}ms`,
-      totalTime: `${Date.now() - startTime}ms`
+      summaryLength: analysis.summary.length
     });
+    
+    // Step 3: Enrich with references if requested
+    let finalAnalysis = analysis;
+    if (includeReferences) {
+      const referenceStartTime = Date.now();
+      finalAnalysis = await enrichWithReferences(analysis);
+      const referenceTime = Date.now() - referenceStartTime;
+      
+      log.step('reference', referenceTime, {
+        url,
+        referencesCount: {
+          videos: finalAnalysis.references.videos.length,
+          podcasts: finalAnalysis.references.podcasts.length,
+          articles: finalAnalysis.references.articles.length,
+          decks: finalAnalysis.references.decks.length,
+          books: finalAnalysis.references.books.length
+        }
+      });
+    }
     
     // Store in cache
     portfolioCache[url] = {
-      data: analysis,
+      data: finalAnalysis,
       timestamp: Date.now()
     };
     
+    // Log total process time
+    const totalTime = Date.now() - startTime;
+    log.info('Portfolio analysis process completed', {
+      url,
+      totalTime: `${totalTime}ms`,
+      steps: includeReferences ? ['scrape', 'analyze', 'reference'] : ['scrape', 'analyze']
+    });
+    
     res.status(200).json({
       success: true,
-      data: analysis,
+      data: finalAnalysis,
       fromCache: false
     });
   } catch (err) {
