@@ -1,61 +1,46 @@
 FROM node:18-slim
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
-
-# Install Chromium dependencies
+# Install dependencies for Puppeteer
 RUN apt-get update && apt-get install -y \
     chromium \
-    fonts-liberation \
-    libappindicator3-1 \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcups2 \
-    libdbus-1-3 \
-    libgdk-pixbuf2.0-0 \
-    libnspr4 \
-    libnss3 \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    xdg-utils \
-    wget \
-    --no-install-recommends && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+    fonts-ipafont-gothic \
+    fonts-wqy-zenhei \
+    fonts-thai-tlwg \
+    fonts-kacst \
+    fonts-symbola \
+    fonts-noto \
+    fonts-freefont-ttf \
+    --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+# Set environment variables
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
+    NODE_ENV=production
+
+# Create app directory
 WORKDIR /app
 
-# Copy all files first
-COPY . .
+# Copy package files
+COPY package.json pnpm-lock.yaml ./
 
-# Debug: List contents of directories
-RUN echo "Contents of /app:" && \
-    ls -la /app && \
-    echo "\nContents of /app/src:" && \
-    ls -la /app/src && \
-    echo "\nContents of /app/src/api:" && \
-    ls -la /app/src/api && \
-    echo "\nContents of /app/src/scraper:" && \
-    ls -la /app/src/scraper && \
-    echo "\nContents of /app/src/config:" && \
-    ls -la /app/src/config && \
-    echo "\nContents of /app/src/llm:" && \
-    ls -la /app/src/llm
+# Install pnpm
+RUN npm install -g pnpm
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 
+# Copy source code
+COPY . .
+
 # Build the application
 RUN pnpm run build
 
-# Set Puppeteer executable path
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-ENV NODE_ENV=production
+# Create a directory for screenshots with proper permissions
+RUN mkdir -p /tmp/tales-analyzer-screenshots && \
+    chmod 777 /tmp/tales-analyzer-screenshots
 
-# Expose the port your app runs on
+# Expose the port
 EXPOSE 3000
 
 # Start the application
