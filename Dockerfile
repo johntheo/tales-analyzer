@@ -39,6 +39,9 @@ RUN echo "Contents of /app:" && \
     echo "\nContents of /app/src:" && \
     ls -la /app/src
 
+# Fix Docker paths
+RUN pnpm run fix:docker-paths
+
 # Verify source files
 RUN pnpm run verify:source
 

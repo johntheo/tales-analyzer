@@ -7,6 +7,30 @@ async function verifyTypeScriptCompiler() {
   try {
     logger.info('Verifying TypeScript compiler...');
 
+    // Log current working directory and environment
+    const cwd = process.cwd();
+    logger.info(`Current working directory: ${cwd}`, { cwd });
+    logger.info(`Directory contents: ${fs.readdirSync(cwd).join(', ')}`, { contents: fs.readdirSync(cwd) });
+    
+    // Check if src directory exists and log its contents
+    const srcDir = path.join(cwd, 'src');
+    if (fs.existsSync(srcDir)) {
+      logger.info(`src directory exists at: ${srcDir}`, { srcDir });
+      logger.info(`src directory contents: ${fs.readdirSync(srcDir).join(', ')}`, { contents: fs.readdirSync(srcDir) });
+    } else {
+      logger.error(`src directory does not exist at: ${srcDir}`, { srcDir });
+    }
+    
+    // Check if tsconfig.json exists and log its contents
+    const tsconfigPath = path.join(cwd, 'tsconfig.json');
+    if (fs.existsSync(tsconfigPath)) {
+      logger.info(`tsconfig.json exists at: ${tsconfigPath}`, { tsconfigPath });
+      const tsconfigContent = fs.readFileSync(tsconfigPath, 'utf8');
+      logger.info(`tsconfig.json content: ${tsconfigContent}`, { content: tsconfigContent });
+    } else {
+      logger.error(`tsconfig.json does not exist at: ${tsconfigPath}`, { tsconfigPath });
+    }
+
     // Check if tsc is available
     try {
       execSync('pnpm tsc --version', { stdio: 'inherit' });
@@ -17,7 +41,7 @@ async function verifyTypeScriptCompiler() {
     }
 
     // Create a temporary test file
-    const testDir = path.join(process.cwd(), 'temp-test');
+    const testDir = path.join(cwd, 'temp-test');
     const testFile = path.join(testDir, 'test.ts');
 
     try {
@@ -52,6 +76,16 @@ async function verifyTypeScriptCompiler() {
       if (fs.existsSync(testDir)) {
         fs.rmSync(testDir, { recursive: true, force: true });
       }
+    }
+
+    // Try to compile the entire project
+    try {
+      logger.info('Attempting to compile the entire project...');
+      execSync('pnpm tsc --project tsconfig.json', { stdio: 'inherit' });
+      logger.info('Successfully compiled the entire project');
+    } catch (error) {
+      logger.error('Failed to compile the entire project', { error });
+      // Don't throw here, we want to continue with the verification
     }
 
     logger.info('TypeScript compiler verification completed successfully');

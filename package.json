@@ -13,7 +13,8 @@
     "test:docker": "tsx src/railway-test-docker.ts",
     "verify:source": "tsx src/verify-source.ts",
     "verify:tsc": "tsx src/verify-tsc.ts",
-    "verify:build": "tsx src/verify-build.ts"
+    "verify:build": "tsx src/verify-build.ts",
+    "fix:docker-paths": "tsx src/fix-docker-paths.ts"
   },
   "dependencies": {
     "@types/uuid": "^10.0.0",
