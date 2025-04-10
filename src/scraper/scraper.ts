@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { v4 as uuidv4 } from 'uuid';
+import { logger } from '../utils/logger.js';
 
 // Função para extrair JSON de uma string que pode conter texto adicional
 function extractJSON(text: string): any {
@@ -64,7 +65,7 @@ async function captureScreenshot(page: any, url: string, outputDir: string): Pro
     fullPage: true 
   });
   
-  console.log(`Screenshot saved: ${filepath}`);
+  logger.debug('Screenshot saved', { filepath });
   return filepath;
 }
 
@@ -111,7 +112,7 @@ async function visitUrlsRecursively(
     visited.add(url);
     
     try {
-      console.log(`Visiting ${url} (depth ${depth})`);
+      logger.debug('Visiting URL', { url, depth });
       
       const page = await browser.newPage();
       await page.setDefaultNavigationTimeout(120000);
@@ -155,7 +156,7 @@ async function visitUrlsRecursively(
       
       await page.close();
     } catch (error) {
-      console.error(`Error visiting ${url}:`, error);
+      logger.error('Error visiting URL', { error, url });
     }
   }
 }
@@ -216,13 +217,13 @@ DON'T include any additional text before or after the JSON.
 `;
 
   try {
-    console.log('Making OpenAI API call');
+    logger.debug('Making OpenAI API call');
     const response = await openai.chat.completions.create({
       model: 'gpt-4',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.3
     });
-    console.log('OpenAI API call completed');
+    logger.debug('OpenAI API call completed');
 
     const content = response.choices[0].message.content;
     if (!content) {
@@ -238,7 +239,7 @@ DON'T include any additional text before or after the JSON.
 
     return extraction;
   } catch (error) {
-    console.error('Extraction error:', error);
+    logger.error('Extraction error', { error });
     throw new Error(`Failed to extract projects and skills: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -255,8 +256,7 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
   }
   
   try {
-    console.log('Starting scraping process');
-    console.log('Starting browser initialization...');
+    logger.info('Starting scraping process', { url });
     const isDev = process.env.NODE_ENV === 'development';
     
     const browserOptions = {
@@ -284,7 +284,7 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
       timeout: 90000
     };
 
-    console.log('Launching browser with options:', JSON.stringify(browserOptions, null, 2));
+    logger.debug('Launching browser', { options: browserOptions });
 
     if (isDev) {
       const puppeteerDev = await import('puppeteer');
@@ -293,14 +293,12 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
       browser = await puppeteer.launch(browserOptions);
     }
     
-    console.log('Browser launched successfully');
+    logger.debug('Browser launched successfully');
     let page = await browser.newPage();
-    console.log('New page created');
     
     // Set a reasonable timeout
     await page.setDefaultNavigationTimeout(120000);
     await page.setDefaultTimeout(120000);
-    console.log('Timeouts set');
     
     // Enable request interception to block unnecessary resources
     await page.setRequestInterception(true);
@@ -319,37 +317,37 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
     
     while (retries > 0) {
       try {
-        console.log(`Attempting to navigate to ${url} (${retries} attempts left)`);
+        logger.debug('Attempting to navigate', { url, retries });
         await page.goto(url, { 
           waitUntil: ['networkidle0', 'domcontentloaded'],
           timeout: 120000 
         });
-        console.log('Navigation successful');
+        logger.debug('Navigation successful');
         break;
       } catch (error: unknown) {
         lastError = error instanceof Error ? error : new Error(String(error));
         retries--;
-        console.log(`Navigation failed: ${lastError.message}`);
+        logger.warn('Navigation failed', { error: lastError, retries });
         if (retries === 0) {
-          console.log('All navigation attempts failed');
+          logger.error('All navigation attempts failed', { error: lastError });
           throw lastError;
         }
-        console.log(`Waiting 10 seconds before retry... (${retries} attempts left)`);
+        logger.debug('Waiting before retry', { retries });
         await new Promise(resolve => setTimeout(resolve, 10000));
         
         // Try to recover the page if it was closed
         try {
           if (!page.isClosed()) {
-            console.log('Page is still open, continuing...');
+            logger.debug('Page is still open');
           } else {
-            console.log('Page was closed, creating new page...');
+            logger.debug('Page was closed, creating new page');
             page = await browser.newPage();
             await page.setDefaultNavigationTimeout(120000);
             await page.setDefaultTimeout(120000);
           }
         } catch (error: unknown) {
           const pageError = error instanceof Error ? error : new Error(String(error));
-          console.log('Error checking page status:', pageError.message);
+          logger.error('Error checking page status', { error: pageError });
           throw pageError;
         }
       }
@@ -360,7 +358,7 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
     screenshots.push(initialScreenshotPath);
     visitedUrls.add(url);
 
-    console.log('Starting content extraction...');
+    logger.debug('Starting content extraction');
 
     // Extract raw text content
     const textContent = await page.evaluate(() => {
@@ -371,7 +369,7 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
         .join('\n');
     });
 
-    console.log('Text content extracted');
+    logger.debug('Text content extracted');
 
     // Extract images with more context
     const images = await page.evaluate(() => {
@@ -386,7 +384,7 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
         .filter(img => img.src && img.src.startsWith('http'));
     });
 
-    console.log('Images extracted');
+    logger.debug('Images extracted', { count: images.length });
 
     // Extract structured content
     const structuredContent = await page.evaluate(() => {
@@ -405,12 +403,12 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
     }) as StructuredContent;
 
     // Extrair links internos para navegação recursiva
-    console.log('Extracting internal links for recursive navigation...');
+    logger.debug('Extracting internal links');
     const internalLinks = await extractInternalLinks(page, url);
-    console.log(`Found ${internalLinks.length} internal links`);
+    logger.debug('Internal links extracted', { count: internalLinks.length });
     
     // Navegar recursivamente pelos links internos
-    console.log('Starting recursive navigation of internal links...');
+    logger.debug('Starting recursive navigation');
     await visitUrlsRecursively(
       browser, 
       internalLinks, 
@@ -421,12 +419,18 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
       outputDir,
       screenshots
     );
-    console.log(`Recursive navigation completed. Visited ${visitedUrls.size} URLs and captured ${screenshots.length} screenshots`);
+    logger.debug('Recursive navigation completed', { 
+      visitedUrls: visitedUrls.size, 
+      screenshots: screenshots.length 
+    });
 
     // Use LLM to extract projects and skills intelligently
-    console.log('Starting intelligent extraction of projects and skills...');
+    logger.debug('Starting intelligent extraction');
     const { projects, skills } = await extractProjectsAndSkills(textContent, images.map(img => img.src), screenshots);
-    console.log('Intelligent extraction completed', { projectsCount: projects.length, skillsCount: skills.length });
+    logger.debug('Intelligent extraction completed', { 
+      projectsCount: projects.length, 
+      skillsCount: skills.length 
+    });
 
     // Add the extracted projects and skills to the structured content
     structuredContent.projects = projects;
@@ -434,9 +438,12 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
     structuredContent.screenshots = screenshots;
     structuredContent.visitedUrls = Array.from(visitedUrls);
 
-    console.log('Structured content extracted', structuredContent);
-    console.log('Images', images);
-    console.log('Scraping completed');
+    logger.info('Scraping completed', { 
+      url,
+      projectsCount: projects.length,
+      skillsCount: skills.length,
+      screenshotsCount: screenshots.length
+    });
     
     return { 
       textContent, 
@@ -444,16 +451,16 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
       structuredContent 
     };
   } catch (error: unknown) {
-    console.error('Scraping error:', error);
+    logger.error('Scraping error', { error });
     throw new Error(`Failed to scrape portfolio: ${error instanceof Error ? error.message : 'Unknown error'}`);
   } finally {
     if (browser) {
       try {
-        console.log('Closing browser...');
+        logger.debug('Closing browser');
         await browser.close();
-        console.log('Browser closed successfully');
+        logger.debug('Browser closed successfully');
       } catch (error) {
-        console.error('Error closing browser:', error);
+        logger.error('Error closing browser', { error });
       }
     }
   }

@@ -5,6 +5,9 @@ import { enrichWithReferences } from '../../reference/index.js';
 import { config } from '../../config/env.js';
 import cors from 'cors';
 import os from 'os';
+import fs from 'fs';
+import path from 'path';
+import { logger } from '../../utils/logger.js';
 
 const app = express();
 app.use(express.json());
@@ -18,65 +21,12 @@ interface CacheEntry {
 
 const portfolioCache: Record<string, CacheEntry> = {};
 
-// Utility function to get memory and CPU usage
-function getResourceUsage() {
-  const used = process.memoryUsage();
-  const cpuUsage = process.cpuUsage();
-  
-  return {
-    memory: {
-      rss: `${Math.round(used.rss / 1024 / 1024)}MB`,
-      heapTotal: `${Math.round(used.heapTotal / 1024 / 1024)}MB`,
-      heapUsed: `${Math.round(used.heapUsed / 1024 / 1024)}MB`,
-      external: `${Math.round(used.external / 1024 / 1024)}MB`
-    },
-    cpu: {
-      user: `${Math.round(cpuUsage.user / 1000)}ms`,
-      system: `${Math.round(cpuUsage.system / 1000)}ms`
-    },
-    loadAverage: os.loadavg()
-  };
-}
-
-// Função para logging estruturado
-const log = {
-  info: (message: string, data?: any) => {
-    console.log(JSON.stringify({
-      timestamp: new Date().toISOString(),
-      level: 'INFO',
-      message,
-      ...data
-    }));
-  },
-  error: (message: string, error: any) => {
-    console.error(JSON.stringify({
-      timestamp: new Date().toISOString(),
-      level: 'ERROR',
-      message,
-      error: error instanceof Error ? {
-        message: error.message,
-        stack: error.stack
-      } : error
-    }));
-  },
-  step: (step: string, duration: number, data?: any) => {
-    console.log(JSON.stringify({
-      timestamp: new Date().toISOString(),
-      level: 'STEP',
-      step,
-      duration: `${duration}ms`,
-      resources: getResourceUsage(),
-      ...data
-    }));
-  }
-};
-
 // Middleware para logging de requisições
 app.use((req: Request, res: Response, next: Function) => {
   const start = Date.now();
   const requestId = Math.random().toString(36).substring(7);
   
-  log.info('Incoming request', {
+  logger.info('Incoming request', {
     requestId,
     method: req.method,
     path: req.path,
@@ -89,7 +39,7 @@ app.use((req: Request, res: Response, next: Function) => {
   const originalSend = res.send;
   res.send = function (body) {
     const duration = Date.now() - start;
-    log.info('Request completed', {
+    logger.info('Request completed', {
       requestId,
       method: req.method,
       path: req.path,
@@ -129,7 +79,7 @@ app.get('/health', (req: Request, res: Response) => {
 const validateUrl = (req: Request, res: Response, next: Function) => {
   const { url } = req.body;
   if (!url) {
-    log.error('URL validation failed', { error: 'URL is required' });
+    logger.error('URL validation failed', { error: 'URL is required' });
     return res.status(400).json({ error: 'URL is required' });
   }
   
@@ -137,14 +87,32 @@ const validateUrl = (req: Request, res: Response, next: Function) => {
     new URL(url);
     next();
   } catch (err) {
-    log.error('URL validation failed', { error: 'Invalid URL format', url });
+    logger.error('URL validation failed', { error: 'Invalid URL format', url });
     return res.status(400).json({ error: 'Invalid URL format' });
   }
 };
 
+// Função para limpar os arquivos temporários
+function cleanupTempFiles(directory: string) {
+  try {
+    if (fs.existsSync(directory)) {
+      const files = fs.readdirSync(directory);
+      for (const file of files) {
+        const filePath = path.join(directory, file);
+        fs.unlinkSync(filePath);
+      }
+      fs.rmdirSync(directory);
+      logger.info('Temporary files cleaned up', { directory });
+    }
+  } catch (error) {
+    logger.error('Error cleaning up temporary files', { error, directory });
+  }
+}
+
 app.post('/portfolio-review', validateUrl, async (req: Request, res: Response) => {
   const { url, useCache = true, includeReferences = false } = req.body;
   const startTime = Date.now();
+  const outputDir = path.join(os.tmpdir(), 'tales-analyzer-screenshots');
 
   try {
     // Check cache first if useCache is true
@@ -152,7 +120,7 @@ app.post('/portfolio-review', validateUrl, async (req: Request, res: Response) =
       const cachedEntry = portfolioCache[url];
       const cacheAge = Date.now() - cachedEntry.timestamp;
       
-      log.info('Using cached portfolio analysis', {
+      logger.info('Using cached portfolio analysis', {
         url,
         cacheAge: `${cacheAge}ms`,
         totalTime: `${Date.now() - startTime}ms`
@@ -165,21 +133,21 @@ app.post('/portfolio-review', validateUrl, async (req: Request, res: Response) =
       });
     }
 
-    log.info('Starting portfolio analysis process', { url });
+    logger.info('Starting portfolio analysis process', { url });
     
     // Step 1: Scrape the portfolio
     const scrapeStartTime = Date.now();
     const { textContent, images, structuredContent } = await scrapePortfolio(url);
     const scrapeTime = Date.now() - scrapeStartTime;
     
-    log.step('scrape', scrapeTime, {
+    logger.step('scrape', scrapeTime, {
       url,
       contentLength: textContent?.length || 0,
       imagesCount: images.length
     });
     
     if (!textContent && images.length === 0) {
-      log.error('No content found', { url });
+      logger.error('No content found', { url });
       return res.status(404).json({ error: 'No content found on the provided URL' });
     }
 
@@ -188,7 +156,7 @@ app.post('/portfolio-review', validateUrl, async (req: Request, res: Response) =
     const analysis = await analyzePortfolio({ textContent, images, structuredContent });
     const analysisTime = Date.now() - analysisStartTime;
     
-    log.step('analyze', analysisTime, {
+    logger.step('analyze', analysisTime, {
       url,
       summaryLength: analysis.summary.length
     });
@@ -200,7 +168,7 @@ app.post('/portfolio-review', validateUrl, async (req: Request, res: Response) =
       finalAnalysis = await enrichWithReferences(analysis);
       const referenceTime = Date.now() - referenceStartTime;
       
-      log.step('reference', referenceTime, {
+      logger.step('reference', referenceTime, {
         url,
         referencesCount: {
           videos: finalAnalysis.references.videos.length,
@@ -220,11 +188,14 @@ app.post('/portfolio-review', validateUrl, async (req: Request, res: Response) =
     
     // Log total process time
     const totalTime = Date.now() - startTime;
-    log.info('Portfolio analysis process completed', {
+    logger.info('Portfolio analysis process completed', {
       url,
       totalTime: `${totalTime}ms`,
       steps: includeReferences ? ['scrape', 'analyze', 'reference'] : ['scrape', 'analyze']
     });
+    
+    // Clean up temporary files after analysis is complete
+    cleanupTempFiles(outputDir);
     
     res.status(200).json({
       success: true,
@@ -233,11 +204,14 @@ app.post('/portfolio-review', validateUrl, async (req: Request, res: Response) =
     });
   } catch (err) {
     const errorTime = Date.now() - startTime;
-    log.error('Error processing portfolio', {
+    logger.error('Error processing portfolio', {
       url,
       error: err,
       processingTime: `${errorTime}ms`
     });
+    
+    // Clean up temporary files even if there's an error
+    cleanupTempFiles(outputDir);
     
     const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
     res.status(500).json({ 
@@ -249,5 +223,5 @@ app.post('/portfolio-review', validateUrl, async (req: Request, res: Response) =
 
 const PORT = process.env.PORT || config.port;
 app.listen(PORT, () => {
-  log.info('Server started', { port: PORT });
+  logger.info('Server started', { port: PORT });
 }); 

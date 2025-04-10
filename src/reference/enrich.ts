@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { config } from '../config/env.js';
+import { logger } from '../utils/logger.js';
 
 const openai = new OpenAI({ apiKey: config.openaiApiKey });
 
@@ -145,11 +146,13 @@ DON'T include any additional text before or after the JSON.
 `;
 
   try {
+    logger.debug('Making OpenAI API call');
     const response = await openai.chat.completions.create({
       model: 'gpt-4',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7
     });
+    logger.debug('OpenAI API call completed');
 
     const content = response.choices[0].message.content;
     if (!content) {
@@ -171,7 +174,7 @@ DON'T include any additional text before or after the JSON.
 
     return enrichedAnalysis;
   } catch (error) {
-    console.error('Reference enrichment error:', error);
+    logger.error('Reference enrichment error', { error });
     throw new Error(`Failed to enrich portfolio with references: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 } 
