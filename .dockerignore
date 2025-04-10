@@ -41,6 +41,9 @@ coverage
 tmp
 temp
 
-# Do NOT ignore tsconfig.json and src directory
+# Do NOT ignore important files
 !tsconfig.json
-!src/ 
+!src/
+!package.json
+!pnpm-lock.yaml
+!railway.toml 

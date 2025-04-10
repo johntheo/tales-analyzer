@@ -14,7 +14,12 @@
     "verify:source": "tsx src/verify-source.ts",
     "verify:tsc": "tsx src/verify-tsc.ts",
     "verify:build": "tsx src/verify-build.ts",
-    "fix:docker-paths": "tsx src/fix-docker-paths.ts"
+    "fix:docker-paths": "tsx src/fix-docker-paths.ts",
+    "check:structure": "tsx src/check-project-structure.ts",
+    "verify:railway": "tsx src/railway-verify.ts",
+    "verify:local": "tsx src/local-verify.ts",
+    "verify:docker": "tsx src/docker-verify.ts",
+    "prebuild": "echo 'Starting build process...' && ls -la && echo 'Contents of src directory:' && ls -la src"
   },
   "dependencies": {
     "@types/uuid": "^10.0.0",
