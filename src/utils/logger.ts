@@ -76,19 +76,20 @@ class Logger {
     const logEntry = this.formatLog(level, message, data, includeResources);
     const logString = JSON.stringify(logEntry);
 
+    // Always log to stdout/stderr for proper capture by Railway
     switch (level) {
       case LogLevel.ERROR:
-        console.error(logString);
+        process.stderr.write(logString + '\n');
         break;
       case LogLevel.WARN:
-        console.warn(logString);
+        process.stdout.write(logString + '\n');
         break;
       case LogLevel.STEP:
-        console.log(logString);
+        process.stdout.write(logString + '\n');
         break;
       default:
         if (this.isDevelopment || level !== LogLevel.DEBUG) {
-          console.log(logString);
+          process.stdout.write(logString + '\n');
         }
     }
   }

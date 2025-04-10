@@ -17,7 +17,20 @@ for (const envVar of requiredEnvVars) {
   }
 }
 
+// Determine the environment
+const isDevelopment = process.env.NODE_ENV === 'development';
+const isProduction = process.env.NODE_ENV === 'production';
+
 export const config = {
   openaiApiKey: process.env.OPENAI_API_KEY,
-  port: process.env.PORT || 3000
+  port: process.env.PORT || 3000,
+  environment: process.env.NODE_ENV || 'development',
+  isDevelopment,
+  isProduction,
+  // Add logging configuration
+  logging: {
+    level: process.env.LOG_LEVEL || (isDevelopment ? 'debug' : 'info'),
+    enableConsole: true,
+    enableFile: false
+  }
 }; 

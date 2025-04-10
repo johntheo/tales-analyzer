@@ -95,7 +95,7 @@ export async function analyzePortfolio({ textContent, images, structuredContent 
   const prompt = `
 You are an experienced mentor and coach specializing in design, product management, and portfolio development. You have years of experience helping professionals refine their portfolios and presentations to effectively showcase their work.
 
-Your task is to provide detailed, constructive feedback on the portfolio material provided. This material has been extracted into structured text, images, and structured content. The portfolio is aimed at showcasing the work of a Designer or Product Manager.
+Your task is to provide detailed, constructive feedback on the material provided. This material has been extracted into structured text, images, and structured content.
 
 Start by identifying the language of the content. Provide feedback in the same language, or use English if unsure.
 
@@ -103,8 +103,8 @@ IMPORTANT: Your feedback should be in a warm, supportive, mentor-to-mentee tone.
 
 CRITICAL INSTRUCTIONS:
 1. Each area's feedback must be completely independent and self-contained. Do not use transitional phrases like "Lastly," "Additionally," or "Furthermore" that suggest you're continuing from a previous point.
-2. You will be using a framework with 5 key areas to evaluate the portfolio: Clarity, Technical Skills, Innovation, User Focus, and Storytelling. For each area, you must provide a score from 1 to 10 and detailed feedback.
-3. MOST IMPORTANTLY: When providing feedback in each area, reference specific projects from the structuredContent whenever possible. Connect your feedback to concrete examples from their projects to make your feedback more contextual and actionable. For example, "In your [Project Name] project, I noticed you effectively used [specific technique], which demonstrates strong [skill]." or "Your [Project Name] could benefit from [specific improvement]." The more your feedback is tied to their actual work, the more valuable it will be.
+2. You will be using a framework with 5 key areas to evaluate the material: Clarity, Technical Skills, Innovation, User Focus, and Storytelling. For each area, you must provide a score from 1 to 10 and detailed feedback.
+3. MOST IMPORTANTLY: When providing feedback in each area, if the material is a portfolio and not a deck or presentation,reference specific projects from the structuredContent whenever possible. Connect your feedback to concrete examples from their projects to make your feedback more contextual and actionable. For example, "In your [Project Name] project, I noticed you effectively used [specific technique], which demonstrates strong [skill]." or "Your [Project Name] could benefit from [specific improvement]." The more your feedback is tied to their actual work, the more valuable it will be.
 
 SCORING GUIDELINES:
 - 1-3: Needs significant improvement
