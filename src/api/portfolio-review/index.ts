@@ -8,6 +8,7 @@ import os from 'os';
 import fs from 'fs';
 import path from 'path';
 import { logger } from '../../utils/logger.js';
+import healthRouter from '../health.js';
 
 // Add startup logging
 logger.info('Application starting', {
@@ -51,6 +52,9 @@ try {
 const app = express();
 app.use(express.json());
 app.use(cors());
+
+// Add health check endpoint
+app.use('/health', healthRouter);
 
 // Cache implementation
 interface CacheEntry {
@@ -101,18 +105,6 @@ app.get('/', (req: Request, res: Response) => {
       health: '/health',
       portfolioReview: '/portfolio-review'
     }
-  });
-});
-
-// Health check endpoint
-app.get('/health', (req: Request, res: Response) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV,
-    memory: process.memoryUsage(),
-    tmpdir: os.tmpdir()
   });
 });
 

@@ -9,7 +9,8 @@
     "postinstall": "pnpm run build",
     "test:puppeteer": "tsx src/test-puppeteer.ts",
     "test:railway": "tsx src/railway-test.ts",
-    "test:fs": "tsx src/railway-test-fs.ts"
+    "test:fs": "tsx src/railway-test-fs.ts",
+    "test:docker": "tsx src/railway-test-docker.ts"
   },
   "dependencies": {
     "@types/uuid": "^10.0.0",

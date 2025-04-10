@@ -21,8 +21,8 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
 # Create app directory
 WORKDIR /app
 
-# Copy package files
-COPY package.json pnpm-lock.yaml ./
+# Copy package files and tsconfig.json
+COPY package.json pnpm-lock.yaml tsconfig.json ./
 
 # Install pnpm
 RUN npm install -g pnpm

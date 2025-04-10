@@ -39,4 +39,6 @@ coverage
 
 # Temporary files
 tmp
-temp 
+temp
+
+# Do NOT ignore tsconfig.json 
