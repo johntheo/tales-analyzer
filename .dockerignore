@@ -41,4 +41,6 @@ coverage
 tmp
 temp
 
-# Do NOT ignore tsconfig.json 
+# Do NOT ignore tsconfig.json and src directory
+!tsconfig.json
+!src/ 

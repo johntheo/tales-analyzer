@@ -10,7 +10,10 @@
     "test:puppeteer": "tsx src/test-puppeteer.ts",
     "test:railway": "tsx src/railway-test.ts",
     "test:fs": "tsx src/railway-test-fs.ts",
-    "test:docker": "tsx src/railway-test-docker.ts"
+    "test:docker": "tsx src/railway-test-docker.ts",
+    "verify:source": "tsx src/verify-source.ts",
+    "verify:tsc": "tsx src/verify-tsc.ts",
+    "verify:build": "tsx src/verify-build.ts"
   },
   "dependencies": {
     "@types/uuid": "^10.0.0",

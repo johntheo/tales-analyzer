@@ -31,7 +31,22 @@ RUN npm install -g pnpm
 RUN pnpm install --frozen-lockfile
 
 # Copy source code
-COPY . .
+COPY src ./src
+
+# Debug: List contents of directories
+RUN echo "Contents of /app:" && \
+    ls -la /app && \
+    echo "\nContents of /app/src:" && \
+    ls -la /app/src
+
+# Verify source files
+RUN pnpm run verify:source
+
+# Verify TypeScript compiler
+RUN pnpm run verify:tsc
+
+# Verify build process
+RUN pnpm run verify:build
 
 # Build the application
 RUN pnpm run build
