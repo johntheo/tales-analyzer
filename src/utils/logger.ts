@@ -42,9 +42,23 @@ interface LogEntry {
 class Logger {
   private static instance: Logger;
   private isDevelopment: boolean;
+  private isRailway: boolean;
 
   private constructor() {
     this.isDevelopment = process.env.NODE_ENV === 'development';
+    this.isRailway = process.env.RAILWAY_ENVIRONMENT === 'true' || 
+                     process.env.RAILWAY_ENVIRONMENT_NAME !== undefined ||
+                     process.env.RAILWAY_SERVICE_NAME !== undefined;
+    
+    // Log initial configuration
+    this.log(LogLevel.INFO, 'Logger initialized', {
+      isDevelopment: this.isDevelopment,
+      isRailway: this.isRailway,
+      nodeEnv: process.env.NODE_ENV,
+      railwayEnv: process.env.RAILWAY_ENVIRONMENT,
+      railwayEnvName: process.env.RAILWAY_ENVIRONMENT_NAME,
+      railwayServiceName: process.env.RAILWAY_SERVICE_NAME
+    });
   }
 
   public static getInstance(): Logger {
@@ -62,7 +76,39 @@ class Logger {
     };
 
     if (data) {
-      logEntry.data = data;
+      // Handle Error objects properly
+      if (data instanceof Error) {
+        logEntry.data = {
+          message: data.message,
+          stack: data.stack,
+          name: data.name
+        };
+      } else if (typeof data === 'object' && data !== null) {
+        // Deep clone the data to avoid modifying the original
+        const clonedData = JSON.parse(JSON.stringify(data));
+        
+        // Process any Error objects in the data
+        const processErrors = (obj: any) => {
+          if (!obj || typeof obj !== 'object') return;
+          
+          for (const key in obj) {
+            if (obj[key] instanceof Error) {
+              obj[key] = {
+                message: obj[key].message,
+                stack: obj[key].stack,
+                name: obj[key].name
+              };
+            } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+              processErrors(obj[key]);
+            }
+          }
+        };
+        
+        processErrors(clonedData);
+        logEntry.data = clonedData;
+      } else {
+        logEntry.data = data;
+      }
     }
 
     if (includeResources) {
@@ -73,24 +119,38 @@ class Logger {
   }
 
   private log(level: LogLevel, message: string, data?: any, includeResources: boolean = false) {
-    const logEntry = this.formatLog(level, message, data, includeResources);
-    const logString = JSON.stringify(logEntry);
+    try {
+      const logEntry = this.formatLog(level, message, data, includeResources);
+      const logString = JSON.stringify(logEntry);
 
-    // Always log to stdout/stderr for proper capture by Railway
-    switch (level) {
-      case LogLevel.ERROR:
-        process.stderr.write(logString + '\n');
-        break;
-      case LogLevel.WARN:
-        process.stdout.write(logString + '\n');
-        break;
-      case LogLevel.STEP:
-        process.stdout.write(logString + '\n');
-        break;
-      default:
-        if (this.isDevelopment || level !== LogLevel.DEBUG) {
+      // Always log to stdout/stderr for proper capture by Railway
+      switch (level) {
+        case LogLevel.ERROR:
+          process.stderr.write(logString + '\n');
+          break;
+        case LogLevel.WARN:
           process.stdout.write(logString + '\n');
-        }
+          break;
+        case LogLevel.STEP:
+          process.stdout.write(logString + '\n');
+          break;
+        default:
+          if (this.isDevelopment || level !== LogLevel.DEBUG || this.isRailway) {
+            process.stdout.write(logString + '\n');
+          }
+      }
+    } catch (error) {
+      // Fallback logging in case of error in the logger itself
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const timestamp = new Date().toISOString();
+      const fallbackLog = JSON.stringify({
+        timestamp,
+        level: 'ERROR',
+        message: 'Logger error',
+        error: errorMessage
+      });
+      
+      process.stderr.write(fallbackLog + '\n');
     }
   }
 
@@ -107,11 +167,7 @@ class Logger {
   }
 
   public error(message: string, error: any) {
-    const errorData = error instanceof Error ? {
-      message: error.message,
-      stack: error.stack
-    } : error;
-    this.log(LogLevel.ERROR, message, errorData);
+    this.log(LogLevel.ERROR, message, error);
   }
 
   public step(step: string, duration: number, data?: any) {

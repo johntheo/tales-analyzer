@@ -361,6 +361,19 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
   try {
     logger.info('Starting scraping process', { url });
     const isDev = process.env.NODE_ENV === 'development';
+    const isRailway = process.env.RAILWAY_ENVIRONMENT === 'true' || 
+                     process.env.RAILWAY_ENVIRONMENT_NAME !== undefined ||
+                     process.env.RAILWAY_SERVICE_NAME !== undefined;
+    
+    logger.info('Environment detection', { 
+      isDev, 
+      isRailway,
+      nodeEnv: process.env.NODE_ENV,
+      railwayEnv: process.env.RAILWAY_ENVIRONMENT,
+      railwayEnvName: process.env.RAILWAY_ENVIRONMENT_NAME,
+      railwayServiceName: process.env.RAILWAY_SERVICE_NAME,
+      puppeteerExecutablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 'Not set'
+    });
     
     const browserOptions = {
       args: [
@@ -375,7 +388,23 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
         '--disable-extensions',
         '--disable-web-security',
         '--disable-features=IsolateOrigins,site-per-process',
-        '--window-size=1920,1080'
+        '--window-size=1920,1080',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-breakpad',
+        '--disable-component-extensions-with-background-pages',
+        '--disable-features=TranslateUI,BlinkGenPropertyTrees',
+        '--disable-ipc-flooding-protection',
+        '--disable-renderer-backgrounding',
+        '--enable-features=NetworkService,NetworkServiceInProcess',
+        '--metrics-recording-only',
+        '--mute-audio',
+        '--no-default-browser-check',
+        '--no-experiments',
+        '--no-pings',
+        '--password-store=basic',
+        '--use-gl=swiftshader',
+        '--use-mock-keychain'
       ],
       defaultViewport: {
         width: 1920,
@@ -393,6 +422,7 @@ export async function scrapePortfolio(url: string): Promise<{ textContent: strin
         executablePath: browserOptions.executablePath ? 'Path set' : 'Path not set'
       },
       isDev,
+      isRailway,
       puppeteerExecutablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 'Not set'
     });
 

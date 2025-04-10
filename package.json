@@ -3,10 +3,13 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx src/api/portfolio-review/index.ts",
+    "dev": "tsx watch src/api/portfolio-review/index.ts",
     "build": "tsc --project tsconfig.json",
     "start": "node dist/api/portfolio-review/index.js",
-    "postinstall": "pnpm run build"
+    "postinstall": "pnpm run build",
+    "test:puppeteer": "tsx src/test-puppeteer.ts",
+    "test:railway": "tsx src/railway-test.ts",
+    "test:fs": "tsx src/railway-test-fs.ts"
   },
   "dependencies": {
     "@types/uuid": "^10.0.0",

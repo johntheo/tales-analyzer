@@ -9,6 +9,45 @@ import fs from 'fs';
 import path from 'path';
 import { logger } from '../../utils/logger.js';
 
+// Add startup logging
+logger.info('Application starting', {
+  nodeVersion: process.version,
+  platform: process.platform,
+  arch: process.arch,
+  env: process.env.NODE_ENV,
+  cwd: process.cwd(),
+  tmpdir: os.tmpdir()
+});
+
+// Log environment variables (excluding sensitive ones)
+const safeEnvVars = Object.entries(process.env)
+  .filter(([key]) => !key.includes('KEY') && !key.includes('SECRET') && !key.includes('TOKEN'))
+  .reduce((obj, [key, value]) => {
+    obj[key] = value;
+    return obj;
+  }, {} as Record<string, string | undefined>);
+
+logger.info('Environment variables', { env: safeEnvVars });
+
+// Check if required directories exist and are writable
+try {
+  const tmpDir = os.tmpdir();
+  const testFile = path.join(tmpDir, 'tales-analyzer-test.txt');
+  
+  logger.info('Testing file system access', { tmpDir });
+  
+  // Test if we can write to the temp directory
+  fs.writeFileSync(testFile, 'test');
+  fs.unlinkSync(testFile);
+  
+  logger.info('File system access test successful', { tmpDir });
+} catch (error) {
+  logger.error('File system access test failed', { 
+    error: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined
+  });
+}
+
 const app = express();
 app.use(express.json());
 app.use(cors());
@@ -71,7 +110,9 @@ app.get('/health', (req: Request, res: Response) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    environment: process.env.NODE_ENV
+    environment: process.env.NODE_ENV,
+    memory: process.memoryUsage(),
+    tmpdir: os.tmpdir()
   });
 });
 
@@ -105,7 +146,11 @@ function cleanupTempFiles(directory: string) {
       logger.info('Temporary files cleaned up', { directory });
     }
   } catch (error) {
-    logger.error('Error cleaning up temporary files', { error, directory });
+    logger.error('Error cleaning up temporary files', { 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      directory 
+    });
   }
 }
 
@@ -206,7 +251,8 @@ app.post('/portfolio-review', validateUrl, async (req: Request, res: Response) =
     const errorTime = Date.now() - startTime;
     logger.error('Error processing portfolio', {
       url,
-      error: err,
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
       processingTime: `${errorTime}ms`
     });
     
@@ -221,7 +267,37 @@ app.post('/portfolio-review', validateUrl, async (req: Request, res: Response) =
   }
 });
 
+// Add error handling for uncaught exceptions
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught exception', { 
+    error: error.message,
+    stack: error.stack
+  });
+  // Give the logger time to write the error before exiting
+  setTimeout(() => {
+    process.exit(1);
+  }, 1000);
+});
+
+// Add error handling for unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled promise rejection', { 
+    reason: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined
+  });
+  // Give the logger time to write the error before exiting
+  setTimeout(() => {
+    process.exit(1);
+  }, 1000);
+});
+
 const PORT = process.env.PORT || config.port;
 app.listen(PORT, () => {
-  logger.info('Server started', { port: PORT });
+  logger.info('Server started', { 
+    port: PORT,
+    nodeVersion: process.version,
+    platform: process.platform,
+    arch: process.arch,
+    env: process.env.NODE_ENV
+  });
 }); 
